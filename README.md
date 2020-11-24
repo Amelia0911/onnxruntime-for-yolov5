@@ -27,4 +27,4 @@ TracerWarning: There are 2 live references to the data region being modified whe
 
 ```
 
-I add this part in the onnx_cpu_detec.py. 
+so I add this part in the onnx_cpu_detec.py. 
