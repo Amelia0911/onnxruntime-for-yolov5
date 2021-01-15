@@ -1,7 +1,8 @@
-import argparse
 from copy import deepcopy
-
-from models.experimental import *
+from pathlib import Path
+from models.common import *
+from models.utils import *
+from models.torch_utils import *
 
 
 class Detect(nn.Module):
@@ -11,7 +12,6 @@ class Detect(nn.Module):
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
         self.nl = len(anchors)  # number of detection layers
-        print("anchors = ", anchors)
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [torch.zeros(1)] * self.nl  # init grid
         a = torch.tensor(anchors).float().view(self.nl, -1, 2)
@@ -75,7 +75,7 @@ class Model(nn.Module):
             # print('Strides: %s' % m.stride.tolist())
 
         # Init weights, biases
-        torch_utils.initialize_weights(self)
+        initialize_weights(self)
         self.info()
         print('')
 
@@ -86,7 +86,7 @@ class Model(nn.Module):
             f = [None, 3, None]  # flips (2-ud, 3-lr)
             y = []  # outputs
             for si, fi in zip(s, f):
-                xi = torch_utils.scale_img(x.flip(fi) if fi else x, si)
+                xi = scale_img(x.flip(fi) if fi else x, si)
                 yi = self.forward_once(xi)[0]  # forward
                 # cv2.imwrite('img%g.jpg' % s, 255 * xi[0].numpy().transpose((1, 2, 0))[:, :, ::-1])  # save
                 yi[..., :4] /= si  # de-scale
@@ -111,10 +111,10 @@ class Model(nn.Module):
                     o = thop.profile(m, inputs=(x,), verbose=False)[0] / 1E9 * 2  # FLOPS
                 except:
                     o = 0
-                t = torch_utils.time_synchronized()
+                t = time_synchronized()
                 for _ in range(10):
                     _ = m(x)
-                dt.append((torch_utils.time_synchronized() - t) * 100)
+                dt.append((time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
             x = m(x)  # run
@@ -138,24 +138,14 @@ class Model(nn.Module):
         for mi in m.m:  #  from
             b = mi.bias.detach().view(m.na, -1).T  # conv.bias(255) to (3,85)
             print(('%6g Conv2d.bias:' + '%10.3g' * 6) % (mi.weight.shape[1], *b[:5].mean(1).tolist(), b[5:].mean()))
-
-    # def _print_weights(self):
-    #     for m in self.model.modules():
-    #         if type(m) is Bottleneck:
-    #             print('%10.3g' % (m.w.detach().sigmoid() * 2))  # shortcut weights
-
     def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
-        print('Fusing layers... ', end='')
+        # print('Fusing layers... ', end='')
         for m in self.model.modules():
             if type(m) is Conv:
-                m.conv = torch_utils.fuse_conv_and_bn(m.conv, m.bn)  # update conv
+                m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 m.bn = None  # remove batchnorm
                 m.forward = m.fuseforward  # update forward
-        self.info()
         return self
-
-    def info(self):  # print model information
-        torch_utils.model_info(self)
 
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
@@ -174,26 +164,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 pass
 
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [nn.Conv2d, Conv, Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP, C3]:
+        print("m = ", m)
+        if m in [nn.Conv2d, Conv, Bottleneck, SPP, Focus, CrossConv, BottleneckCSP, C3]:
             c1, c2 = ch[f], args[0]
 
-            # Normal
-            # if i > 0 and args[0] != no:  # channel expansion factor
-            #     ex = 1.75  # exponential (default 2.0)
-            #     e = math.log(c2 / ch[1]) / math.log(2)
-            #     c2 = int(ch[1] * ex ** e)
-            # if m != Focus:
-
             c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
-
-            # Experimental
-            # if i > 0 and args[0] != no:  # channel expansion factor
-            #     ex = 1 + gw  # exponential (default 2.0)
-            #     ch1 = 32  # ch[1]
-            #     e = math.log(c2 / ch1) / math.log(2)  # level 1-n
-            #     c2 = int(ch1 * ex ** e)
-            # if m != Focus:
-            #     c2 = make_divisible(c2, 8) if c2 != no else c2
 
             args = [c1, c2, *args[1:]]
             if m in [BottleneckCSP, C3]:
@@ -219,31 +194,3 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         layers.append(m_)
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='yolov5s.yaml', help='model.yaml')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    opt = parser.parse_args()
-    opt.cfg = check_file(opt.cfg)  # check file
-    device = torch_utils.select_device(opt.device)
-
-    # Create model
-    model = Model(opt.cfg).to(device)
-    model.train()
-
-    # Profile
-    # img = torch.rand(8 if torch.cuda.is_available() else 1, 3, 640, 640).to(device)
-    # y = model(img, profile=True)
-
-    # ONNX export
-    # model.model[-1].export = True
-    # torch.onnx.export(model, img, opt.cfg.replace('.yaml', '.onnx'), verbose=True, opset_version=11)
-
-    # Tensorboard
-    # from torch.utils.tensorboard import SummaryWriter
-    # tb_writer = SummaryWriter()
-    # print("Run 'tensorboard --logdir=models/runs' to view tensorboard at http://localhost:6006/")
-    # tb_writer.add_graph(model.model, img)  # add model to tensorboard
-    # tb_writer.add_image('test', img[0], dataformats='CWH')  # add model to tensorboard

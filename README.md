@@ -1,11 +1,11 @@
 # onnxruntime-for-yolov5
 Using CPU to test yolov5s model.
 
-0. predict.py is the model test code。   
+1.predict.py is the model test code。   
 
-1. pytorch to onnx : pytorch2onnx.py;
+2.pytorch to onnx : pytorch2onnx.py;
 
-2. test onnx mode : onnx_cpu_detec.py
+3.test onnx mode : onnx_cpu_detec.py
 
 
 
@@ -31,6 +31,6 @@ so I add this part in the onnx_cpu_detec.py.
 
 
 Test one data：
-> GPU：time =  0.03293251991271973
-> CPU：time =  0.10686612129211426
-> onnxruntime：time =  0.0607454776763916
+- GPU：time =  0.03293251991271973
+- CPU：time =  0.10686612129211426
+- onnxruntime：time =  0.0607454776763916

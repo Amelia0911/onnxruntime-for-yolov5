@@ -1,18 +1,11 @@
-# This file contains modules common to various models
-
-from utils.utils import *
+import torch.nn as nn
+import torch
 
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
-
-
-def DWConv(c1, c2, k=1, s=1, act=True):
-    # Depthwise convolution
-    return Conv(c1, c2, k, s, g=math.gcd(c1, c2), act=act)
-
 
 class Conv(nn.Module):
     # Standard convolution
@@ -27,7 +20,6 @@ class Conv(nn.Module):
 
     def fuseforward(self, x):
         return self.act(self.conv(x))
-
 
 class Bottleneck(nn.Module):
     # Standard bottleneck
@@ -84,7 +76,6 @@ class Focus(nn.Module):
     def forward(self, x):  # x(b,c,w,h) -> y(b,4c,w/2,h/2)
         return self.conv(torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1))
 
-
 class Concat(nn.Module):
     # Concatenate a list of tensors along dimension
     def __init__(self, dimension=1):
@@ -93,23 +84,3 @@ class Concat(nn.Module):
 
     def forward(self, x):
         return torch.cat(x, self.d)
-
-
-class Flatten(nn.Module):
-    # Use after nn.AdaptiveAvgPool2d(1) to remove last 2 dimensions
-    @staticmethod
-    def forward(x):
-        return x.view(x.size(0), -1)
-
-
-class Classify(nn.Module):
-    # Classification head, i.e. x(b,c1,20,20) to x(b,c2)
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):  # ch_in, ch_out, kernel, stride, padding, groups
-        super(Classify, self).__init__()
-        self.aap = nn.AdaptiveAvgPool2d(1)  # to x(b,c1,1,1)
-        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)  # to x(b,c2,1,1)
-        self.flat = Flatten()
-
-    def forward(self, x):
-        z = torch.cat([self.aap(y) for y in (x if isinstance(x, list) else [x])], 1)  # cat if list
-        return self.flat(self.conv(z))  # flatten to x(b,c2)
