@@ -31,6 +31,6 @@ so I add this part in the onnx_cpu_detec.py.
 
 
 Test one data：
-- GPU：time =  0.03293251991271973
-- CPU：time =  0.10686612129211426
-- onnxruntime：time =  0.0607454776763916
+- gpu : time =  0.052513837814331055
+- cpu : time =  0.15983295440673828
+- onnxruntime time =  0.05210542678833008

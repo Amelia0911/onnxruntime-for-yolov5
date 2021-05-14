@@ -4,10 +4,16 @@ import warnings
 warnings.filterwarnings('ignore')
 from models.utils import *
 
-IMAGE_SIZE = 416
-CONF_TH = 0.7
+IMAGE_SIZE = (416, 416)
+CONF_TH = 0.3
 NMS_TH = 0.45
-CLASSES = 1
+CLASSES = 80
+weights = "yolov5s.pt"
+
+if 1:
+    device = torch.device("cuda")#使用GPU
+else:
+    device = torch.device("cpu")#使用CPU
 
 def select_device(device='', apex=False, batch_size=None):
     cpu_request = device.lower() == 'cpu'
@@ -16,11 +22,6 @@ def select_device(device='', apex=False, batch_size=None):
         assert torch.cuda.is_available(), 'CUDA unavailable, invalid device %s requested' % device  # check availablity
     cuda = False if cpu_request else torch.cuda.is_available()
     return torch.device('cuda:0' if cuda else 'cpu')
-
-if torch.cuda.is_available():
-    device = select_device('0')
-else:
-    device = 'cpu'
 
 class Ensemble(nn.ModuleList):
     # Ensemble of models
@@ -34,17 +35,16 @@ class Ensemble(nn.ModuleList):
         y = torch.stack(y).mean(0)  # mean ensemble
         return y, None  # inference, train output
 
-weights = "yolov5.pt"
+
 model = Ensemble()
 model.append(torch.load(weights, map_location=device)['model'].float().fuse().eval())  # load FP32 model
 model = model[-1]
-
 half = device.type != 'cpu'
 if half:
     model.half()
 
 def detect(img):
-    image = cv2.resize(img, (416, 320))
+    image = cv2.resize(img, IMAGE_SIZE) #(宽，高)
     image = image.transpose(2, 0, 1)
     dataset = (image, img)
 
@@ -63,28 +63,29 @@ def detect(img):
         return np.array([])
     return det
 
-names = model.module.names if hasattr(model, 'module') else model.names
-colors = [[0, 0, 255]]
 def draw(path, boxinfo):
     img = cv2.imread(path)
     for *xyxy, conf, cls in boxinfo:
-        label = '%s %.2f' % (names[int(cls)], conf)
-        print('xyxy: ', xyxy)
-        plot_one_box(xyxy, img, label=label, color=colors[int(cls)], line_thickness=3)
-    # cv2.imshow("dst", img)
-    # cv2.waitKey(1000)
-    cv2.imencode('.jpg', img)[1].tofile("dst.jpg")
+        label = '{}|{}'.format(int(cls), '%.2f' % conf)
+        plot_one_box(xyxy, img, label=label, color=[0, 0, 255])
+    cv2.imencode('.jpg', img)[1].tofile('dst1.jpg')
     return 0
 
 
 if __name__ == '__main__':
-    import glob
-    src = '/home/lzm/Downloads/img'
-    for i in glob.glob(os.path.join(src, "*")):
-        img = cv2.imdecode(np.fromfile(i, dtype=np.uint8),-1)
-        results = detect(img)
-        if results is not None and len(results):
-            draw(i, results)
+    import time
+    src = 'bus.jpg'
+
+    t1 = time.time()
+    img = cv2.imdecode(np.fromfile(src, dtype=np.uint8), -1)
+    results = detect(img)
+    t2 = time.time()
+
+    print(results)
+    print(device, ": time = ", t2 - t1)
+
+    if results is not None and len(results):
+        draw(src, results)
     print('Down!')
 
 
