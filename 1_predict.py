@@ -15,14 +15,6 @@ if 1:
 else:
     device = torch.device("cpu")#使用CPU
 
-def select_device(device='', apex=False, batch_size=None):
-    cpu_request = device.lower() == 'cpu'
-    if device and not cpu_request:  # if device requested other than 'cpu'
-        os.environ['CUDA_VISIBLE_DEVICES'] = device  # set environment variable
-        assert torch.cuda.is_available(), 'CUDA unavailable, invalid device %s requested' % device  # check availablity
-    cuda = False if cpu_request else torch.cuda.is_available()
-    return torch.device('cuda:0' if cuda else 'cpu')
-
 class Ensemble(nn.ModuleList):
     # Ensemble of models
     def __init__(self):
